@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>Switch Track Oyunu</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const COLORS = {
+      red: { main: '#EF4444', dark: '#B91C1C', light: '#FCA5A5', name: 'Kırmızı' },
+      blue: { main: '#3B82F6', dark: '#1D4ED8', light: '#93C5FD', name: 'Mavi' },
+      green: { main: '#10B981', dark: '#047857', light: '#6EE7B7', name: 'Yeşil' },
+      yellow: { main: '#F59E0B', dark: '#B45309', light: '#FDE68A', name: 'Sarı' },
+    };
+
+    const COLOR_KEYS = ['red', 'blue', 'green', 'yellow'];
+
+    const TOWN_MILESTONES = [
+      {
+        threshold: 3,
+        name: 'Gür Ağaç',
+        svg: (
+          <svg className="w-10 h-10" viewBox="0 0 64 64" fill="none">
+            <ellipse cx="32" cy="58" rx="16" ry="4" fill="#00000040" />
+            <rect x="28" y="36" width="8" height="22" rx="3" fill="#854D0E" />
+            <circle cx="32" cy="30" r="16" fill="#15803D" />
+            <circle cx="24" cy="24" r="13" fill="#16A34A" />
+            <circle cx="40" cy="24" r="13" fill="#16A34A" />
+            <circle cx="32" cy="18" r="14" fill="#22C55E" />
+          </svg>
+        ),
+      },
+      {
+        threshold: 7,
+        name: 'Kulübe',
+        svg: (
+          <svg className="w-10 h-10" viewBox="0 0 64 64" fill="none">
+            <ellipse cx="32" cy="58" rx="20" ry="4" fill="#00000040" />
+            <rect x="18" y="32" width="28" height="24" rx="2" fill="#D97706" />
+            <polygon points="14,32 32,16 50,32" fill="#991B1B" />
+            <rect x="28" y="42" width="8" height="14" fill="#78350F" />
+            <rect x="36" y="36" width="6" height="6" rx="1" fill="#FEF08A" />
+          </svg>
+        ),
+      },
+      {
+        threshold: 14,
+        name: 'Sokak Lambası',
+        svg: (
+          <svg className="w-10 h-10" viewBox="0 0 64 64" fill="none">
+            <ellipse cx="32" cy="58" rx="10" ry="3" fill="#00000040" />
+            <rect x="30" y="20" width="4" height="38" fill="#334155" />
+            <path d="M28 20 C28 14 36 14 36 20 Z" fill="#475569" />
+            <circle cx="32" cy="24" r="6" fill="#FACC15" />
+          </svg>
+        ),
+      },
+      {
+        threshold: 22,
+        name: 'Kasaba Evi',
+        svg: (
+          <svg className="w-10 h-10" viewBox="0 0 64 64" fill="none">
+            <ellipse cx="32" cy="58" rx="22" ry="4" fill="#00000040" />
+            <rect x="16" y="28" width="32" height="28" rx="2" fill="#E2E8F0" />
+            <polygon points="12,28 32,12 52,28" fill="#475569" />
+            <rect x="22" y="34" width="7" height="7" fill="#38BDF8" />
+            <rect x="35" y="34" width="7" height="7" fill="#38BDF8" />
+            <rect x="28" y="44" width="8" height="12" fill="#94A3B8" />
+          </svg>
+        ),
+      },
+      {
+        threshold: 35,
+        name: 'Saat Kulesi',
+        svg: (
+          <svg className="w-10 h-10" viewBox="0 0 64 64" fill="none">
+            <ellipse cx="32" cy="58" rx="14" ry="4" fill="#00000040" />
+            <rect x="24" y="20" width="16" height="38" fill="#64748B" />
+            <polygon points="20,20 32,8 44,20" fill="#0F172A" />
+            <circle cx="32" cy="28" r="6" fill="#F8FAFC" stroke="#0F172A" strokeWidth="2" />
+          </svg>
+        ),
+      }
+    ];
+
+    function App() {
+      const canvasRef = React.useRef(null);
+      const [gameState, setGameState] = React.useState('menu');
+      const [score, setScore] = React.useState(0);
+      const [lives, setLives] = React.useState(3);
+      const [highScore, setHighScore] = React.useState(0);
+      const [totalDelivered, setTotalDelivered] = React.useState(0);
+      const [toastMessage, setToastMessage] = React.useState(null);
+
+      const switchesRef = React.useRef({ main: 0, upper: 0, lower: 0 });
+      const [switchStates, setSwitchStates] = React.useState({ main: 0, upper: 0, lower: 0 });
+
+      const trainsRef = React.useRef([]);
+      const animFrameIdRef = React.useRef(null);
+      const lastSpawnTimeRef = React.useRef(0);
+      const gameSpeedRef = React.useRef(1.2);
+      const totalDeliveredRef = React.useRef(0);
+
+      React.useEffect(() => {
+        const savedHigh = localStorage.getItem('switch_track_high_score');
+        const savedTotal = localStorage.getItem('switch_track_total_delivered');
+        if (savedHigh) setHighScore(parseInt(savedHigh, 10));
+        if (savedTotal) {
+          const parsed = parseInt(savedTotal, 10);
+          setTotalDelivered(parsed);
+          totalDeliveredRef.current = parsed;
+        }
+      }, []);
+
+      const showToast = (msg) => {
+        setToastMessage(msg);
+        setTimeout(() => setToastMessage(null), 3000);
+      };
+
+      const toggleSwitch = (name) => {
+        switchesRef.current[name] = switchesRef.current[name] === 0 ? 1 : 0;
+        setSwitchStates({ ...switchesRef.current });
+      };
+
+      const startGame = () => {
+        setScore(0);
+        setLives(3);
+        trainsRef.current = [];
+        lastSpawnTimeRef.current = performance.now();
+        gameSpeedRef.current = 1.2;
+        switchesRef.current = { main: 0, upper: 0, lower: 0 };
+        setSwitchStates({ main: 0, upper: 0, lower: 0 });
+        setGameState('playing');
+      };
+
+      React.useEffect(() => {
+        if (gameState !== 'playing') return;
+
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width;
+        const H = canvas.height;
+
+        const stations = [
+          { y: H * 0.18, color: 'red' },
+          { y: H * 0.38, color: 'blue' },
+          { y: H * 0.62, color: 'green' },
+          { y: H * 0.82, color: 'yellow' },
+        ];
+
+        const switchX_Main = W * 0.32;
+        const switchX_Sub = W * 0.62;
+        const upperMidY = H * 0.28;
+        const lowerMidY = H * 0.72;
+
+        let localLives = 3;
+        let localScore = 0;
+
+        const render = (time) => {
+          const spawnInterval = Math.max(1800, 3600 - localScore * 50);
+          if (time - lastSpawnTimeRef.current > spawnInterval) {
+            lastSpawnTimeRef.current = time;
+            const randomColor = COLOR_KEYS[Math.floor(Math.random() * COLOR_KEYS.length)];
+            trainsRef.current.push({
+              x: -40,
+              y: H * 0.5,
+              colorKey: randomColor
+            });
+          }
+
+          gameSpeedRef.current = 1.2 + Math.min(localScore * 0.04, 2.0);
+
+          ctx.fillStyle = '#0F172A';
+          ctx.fillRect(0, 0, W, H);
+
+          // Raylar
+          ctx.lineWidth = 6;
+          ctx.lineCap = 'round';
+          ctx.strokeStyle = '#334155';
+
+          ctx.beginPath();
+          ctx.moveTo(0, H * 0.5);
+          ctx.lineTo(switchX_Main, H * 0.5);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(switchX_Main, H * 0.5);
+          ctx.bezierCurveTo(switchX_Main + 60, H * 0.5, switchX_Main + 60, upperMidY, switchX_Sub, upperMidY);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(switchX_Main, H * 0.5);
+          ctx.bezierCurveTo(switchX_Main + 60, H * 0.5, switchX_Main + 60, lowerMidY, switchX_Sub, lowerMidY);
+          ctx.stroke();
+
+          stations.forEach((st, idx) => {
+            const fromY = idx < 2 ? upperMidY : lowerMidY;
+            ctx.beginPath();
+            ctx.moveTo(switchX_Sub, fromY);
+            ctx.bezierCurveTo(switchX_Sub + 70, fromY, switchX_Sub + 70, st.y, W - 40, st.y);
+            ctx.stroke();
+          });
+
+          // İstasyonlar
+          stations.forEach((st) => {
+            ctx.fillStyle = COLORS[st.color].main;
+            ctx.beginPath();
+            ctx.roundRect(W - 45, st.y - 18, 38, 36, 6);
+            ctx.fill();
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(COLORS[st.color].name[0], W - 26, st.y + 4);
+          });
+
+          // Trenler
+          for (let i = trainsRef.current.length - 1; i >= 0; i--) {
+            const train = trainsRef.current[i];
+            train.x += gameSpeedRef.current * 2;
+
+            if (train.x < switchX_Main) {
+              train.y = H * 0.5;
+            } else if (train.x >= switchX_Main && train.x < switchX_Sub) {
+              const t = (train.x - switchX_Main) / (switchX_Sub - switchX_Main);
+              const targetY = switchesRef.current.main === 0 ? upperMidY : lowerMidY;
+              train.y = (H * 0.5) * (1 - t) + targetY * t;
+            } else {
+              const t = Math.min(1, (train.x - switchX_Sub) / (W - 45 - switchX_Sub));
+              const isUpper = switchesRef.current.main === 0;
+              let targetY;
+              if (isUpper) {
+                targetY = switchesRef.current.upper === 0 ? stations[0].y : stations[1].y;
+              } else {
+                targetY = switchesRef.current.lower === 0 ? stations[2].y : stations[3].y;
+              }
+              const fromY = isUpper ? upperMidY : lowerMidY;
+              train.y = fromY * (1 - t) + targetY * t;
+            }
+
+            // Çarpışma
+            for (let j = 0; j < i; j++) {
+              const other = trainsRef.current[j];
+              const dist = Math.hypot(train.x - other.x, train.y - other.y);
+              if (dist < 32) {
+                trainsRef.current.splice(i, 1);
+                localLives -= 1;
+                setLives(localLives);
+                if (localLives <= 0) {
+                  setGameState('gameover');
+                  return;
+                }
+                break;
+              }
+            }
+
+            // Varış
+            if (train.x >= W - 45) {
+              let matchedStationIndex = 0;
+              let minDist = 999;
+              stations.forEach((st, idx) => {
+                const d = Math.abs(train.y - st.y);
+                if (d < minDist) {
+                  minDist = d;
+                  matchedStationIndex = idx;
+                }
+              });
+
+              if (stations[matchedStationIndex].color === train.colorKey) {
+                localScore += 10;
+                setScore(localScore);
+                const newTotal = totalDeliveredRef.current + 1;
+                totalDeliveredRef.current = newTotal;
+                setTotalDelivered(newTotal);
+                localStorage.setItem('switch_track_total_delivered', newTotal.toString());
+
+                const unlocked = TOWN_MILESTONES.find((m) => m.threshold === newTotal);
+                if (unlocked) showToast(`🎉 Yeni bina açıldı: ${unlocked.name}!`);
+              } else {
+                localLives -= 1;
+                setLives(localLives);
+                if (localLives <= 0) {
+                  setGameState('gameover');
+                  return;
+                }
+              }
+
+              trainsRef.current.splice(i, 1);
+              continue;
+            }
+
+            // Vagon Çizimi
+            ctx.save();
+            ctx.translate(train.x, train.y);
+
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.beginPath();
+            ctx.ellipse(0, 13, 16, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#1E293B';
+            ctx.beginPath();
+            ctx.arc(-8, 10, 3.5, 0, Math.PI * 2);
+            ctx.arc(8, 10, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = COLORS[train.colorKey].main;
+            ctx.beginPath();
+            ctx.roundRect(-14, -10, 28, 18, 4);
+            ctx.fill();
+
+            ctx.fillStyle = '#E0F2FE';
+            ctx.fillRect(-9, -4, 7, 7);
+            ctx.fillRect(2, -4, 7, 7);
+
+            ctx.restore();
+          }
+
+          animFrameIdRef.current = requestAnimationFrame(render);
+        };
+
+        animFrameIdRef.current = requestAnimationFrame(render);
+        return () => {
+          if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
+        };
+      }, [gameState]);
+
+      React.useEffect(() => {
+        if (gameState === 'gameover' && score > highScore) {
+          setHighScore(score);
+          localStorage.setItem('switch_track_high_score', score.toString());
+        }
+      }, [gameState, score, highScore]);
+
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen text-white p-4 font-sans select-none">
+          {toastMessage && (
+            <div className="fixed top-6 z-50 px-5 py-3 rounded-xl bg-amber-400 text-slate-950 font-bold shadow-2xl">
+              {toastMessage}
+            </div>
+          )}
+
+          <div className="w-full max-w-xl flex items-center justify-between bg-slate-900 border border-slate-800 px-6 py-3 rounded-2xl mb-3">
+            <div>
+              <span className="text-xs text-slate-400 font-semibold">SKOR</span>
+              <p className="text-2xl font-black text-amber-400">{score}</p>
+            </div>
+            <div className="flex gap-1 text-2xl">
+              {[...Array(3)].map((_, i) => (
+                <span key={i} className={i < lives ? 'text-red-500' : 'text-slate-700'}>❤️</span>
+              ))}
+            </div>
+            <div className="text-right">
+              <span className="text-xs text-slate-400 font-semibold">REKOR</span>
+              <p className="text-2xl font-black text-slate-300">{highScore}</p>
+            </div>
+          </div>
+
+          <div className="relative w-full max-w-xl bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl">
+            <canvas ref={canvasRef} width={600} height={360} className="w-full h-auto block" />
+
+            {gameState === 'playing' && (
+              <>
+                <button
+                  onClick={() => toggleSwitch('main')}
+                  className="absolute left-[32%] top-[45%] -translate-x-1/2 -translate-y-1/2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs px-3 py-1.5 rounded-full shadow-lg border-2 border-white"
+                >
+                  Makas 1: {switchStates.main === 0 ? '⬆ Üst' : '⬇ Alt'}
+                </button>
+
+                <button
+                  onClick={() => toggleSwitch('upper')}
+                  className="absolute left-[62%] top-[23%] -translate-x-1/2 -translate-y-1/2 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs px-3 py-1.5 rounded-full shadow-lg border-2 border-white"
+                >
+                  Makas 2: {switchStates.upper === 0 ? '🔴 Kırmızı' : '🔵 Mavi'}
+                </button>
+
+                <button
+                  onClick={() => toggleSwitch('lower')}
+                  className="absolute left-[62%] top-[74%] -translate-x-1/2 -translate-y-1/2 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs px-3 py-1.5 rounded-full shadow-lg border-2 border-white"
+                >
+                  Makas 3: {switchStates.lower === 0 ? '🟢 Yeşil' : '🟡 Sarı'}
+                </button>
+              </>
+            )}
+
+            {gameState === 'menu' && (
+              <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
+                <h1 className="text-3xl font-black text-amber-400 mb-2">Switch Track</h1>
+                <p className="text-slate-300 text-sm max-w-xs mb-6">
+                  Makas butonlarına tıklayarak trenleri doğru renkteki istasyonlara ulaştırın!
+                </p>
+                <button
+                  onClick={startGame}
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-8 py-3 rounded-xl shadow-lg"
+                >
+                  Oyunu Başlat
+                </button>
+              </div>
+            )}
+
+            {gameState === 'gameover' && (
+              <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
+                <h2 className="text-3xl font-black text-red-500 mb-2">Oyun Bitti!</h2>
+                <p className="text-slate-300 text-sm mb-4">Tren çarpıştı veya yanlış istasyona girdi.</p>
+                <button
+                  onClick={startGame}
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-8 py-3 rounded-xl shadow-lg"
+                >
+                  Tekrar Oyna
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl p-4 mt-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-slate-200">🏙️ Büyüyen Kasabanız</h3>
+              <span className="text-xs text-amber-400 font-semibold">Toplam Teslimat: {totalDelivered}</span>
+            </div>
+            <div className="flex gap-3 overflow-x-auto py-2">
+              {TOWN_MILESTONES.map((item, idx) => {
+                const isUnlocked = totalDelivered >= item.threshold;
+                return (
+                  <div
+                    key={idx}
+                    className={`flex flex-col items-center justify-center p-2 rounded-xl min-w-[80px] border ${
+                      isUnlocked ? 'bg-slate-800 border-slate-700' : 'bg-slate-950/40 border-slate-800/40 opacity-25 grayscale'
+                    }`}
+                  >
+                    {item.svg}
+                    <span className="text-[10px] font-semibold text-slate-200 mt-1">{item.name}</span>
+                    <span className="text-[9px] text-slate-400">{isUnlocked ? 'Açıldı' : `${item.threshold} Tren`}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
